@@ -1,0 +1,136 @@
+Ürün Gereksinim Belgesi (PRD)
+Proje Adı: Stripe Ödeme Geçidi Ara Katmanı (Payment Gateway Middleware)
+
+Versiyon: 1.0
+
+Tarih: 15 Ocak 2026
+
+Durum: Taslak
+
+1. Proje Özeti
+Bu proje, harici web sitelerinden (istemci) gelen ödeme taleplerini karşılayan, Stripe altyapısını kullanarak tahsilatı gerçekleştiren ve kullanıcıyı işlem sonucuna göre ilgili web sitesine geri yönlendiren merkezi bir ödeme sayfası ve yönetim panelidir.
+
+Temel Amaç: Farklı projeler veya web siteleri için tek bir noktadan güvenli ödeme almak ve tüm işlemleri tek bir admin panelinden takip etmek.
+
+2. Teknik Yığın (Tech Stack)
+Frontend & Backend: Next.js 15 (App Router, Server Actions)
+
+Veritabanı & Kimlik Doğrulama: Supabase (PostgreSQL, Auth)
+
+Ödeme Altyapısı: Stripe (Stripe Elements & Webhooks)
+
+UI Framework: Tailwind CSS + Shadcn/UI
+
+Deployment: Vercel (Önerilen)
+
+3. Kullanıcı Rolleri
+Son Kullanıcı (Payer): Ödemeyi yapacak olan kişi.
+
+Sistem Admini: Ödemeleri izleyen, iade (refund) işlemlerini yöneten ve raporları gören yetkili.
+
+Entegre Sistem (Client): Kullanıcıyı ödeme sayfasına yönlendiren harici web sitesi.
+
+4. Kullanıcı Akışları (User Flows)
+4.1. Ödeme Akışı
+
+Başlatma: Kullanıcı, harici siteden (örn: alisveris.com) "Öde" butonuna basar.
+
+Yönlendirme: Kullanıcı şu parametrelerle sisteme gelir:
+
+amount: Tutar (örn: 100)
+
+currency: Para birimi (örn: TRY)
+
+ref_id: Harici sitedeki sipariş no (örn: SIP-999)
+
+callback_url: İşlem bitince dönülecek URL
+
+client_secret (Opsiyonel/Güvenlik): Tutarlılığı doğrulamak için imza.
+
+Ödeme Sayfası: Sistem parametreleri doğrular, Stripe üzerinde bir PaymentIntent oluşturur ve kullanıcıya kredi kartı formunu gösterir.
+
+İşlem: Kullanıcı kart bilgilerini girer ve onaylar.
+
+Sonuç:
+
+Başarılı: Supabase güncellenir -> Kullanıcı callback_url?status=success&ref_id=... adresine yönlendirilir.
+
+Başarısız: Hata mesajı gösterilir -> Kullanıcı tekrar denemeye veya callback_url?status=failed adresine yönlendirilir.
+
+4.2. Admin Paneli Akışı
+
+Admin, /admin rotasından Supabase Auth ile giriş yapar.
+
+Dashboard'da günlük toplam ciro ve son işlemleri görür.
+
+İşlem listesinde tarih, tutar, durum ve kaynak siteye göre filtreleme yapar.
+
+5. Fonksiyonel Gereksinimler
+5.1. Ödeme Arayüzü (Checkout Page)
+
+Dinamik Tutar: URL parametresinden gelen tutarı ekranda göstermelidir.
+
+Stripe Elements: Kart numarası, SKT ve CVC için Stripe'ın güvenli iframe (Elements) yapısı kullanılmalıdır.
+
+Validasyon: Eksik parametre ile gelindiyse (örn: tutar yoksa) kullanıcıya "Geçersiz İşlem" hata sayfası gösterilmelidir.
+
+Loading State: Ödeme işlenirken buton "İşleniyor..." durumuna geçmeli ve tekrar tıklama engellenmelidir.
+
+5.2. Backend & API (Next.js Server Actions)
+
+Create Payment Intent: Sayfa yüklendiğinde Stripe API ile iletişim kurup bir ödeme oturumu başlatmalıdır.
+
+Webhook Listener: Stripe'tan gelen asenkron payment_intent.succeeded ve payment_intent.payment_failed olaylarını dinleyen bir API route (/api/webhooks/stripe) olmalıdır.
+
+Kritik: Veritabanındaki ödeme durumu sadece Webhook'tan gelen bilgiye göre "Paid" olarak işaretlenmelidir (Kullanıcı tarayıcıyı kapatsa bile işlem kaydedilmelidir).
+
+5.3. Admin Paneli
+
+Oturum Yönetimi: Sadece belirli e-posta adreslerine sahip adminler giriş yapabilmelidir.
+
+İşlem Listesi Tablosu:
+
+Sütunlar: ID, Tutar, Para Birimi, Durum (Badge), Kaynak URL, Referans ID, Tarih.
+
+Filtreler: Başarılı/Başarısız, Tarih Aralığı.
+
+Dashboard Widgetları:
+
+Toplam Ciro (Total Revenue)
+
+Başarılı İşlem Sayısı
+
+Başarısız İşlem Oranı
+
+6. Veritabanı Şeması (Supabase)
+Tablo Adı: transactions
+
+Kolon Adı	Veri Tipi	Açıklama
+id	UUID (PK)	Benzersiz işlem ID'si
+created_at	Timestamptz	İşlem oluşturulma tarihi
+amount	Numeric	Tutar (Örn: 150.50)
+currency	Text	Para birimi (TRY, USD)
+status	Text	pending, succeeded, failed
+stripe_pi_id	Text	Stripe Payment Intent ID
+source_ref_id	Text	Harici sitenin sipariş numarası
+callback_url	Text	Geri dönüş URL'i
+metadata	JSONB	Ekstra bilgiler (Müşteri IP, email vb.)
+7. Güvenlik Gereksinimleri
+SSL: Tüm sistem HTTPS üzerinden çalışmalıdır.
+
+Environment Variables: Stripe Secret Key ve Supabase Key'leri asla client-side kodunda ifşa edilmemelidir.
+
+CSRF Koruması: Next.js yerleşik korumaları aktif olmalıdır.
+
+Basit Güvenlik (V1 için): Harici site ile backend arasında bir "Secret Key" belirlenip, URL manipülasyonunu önlemek için basit bir hash kontrolü eklenebilir (İleri fazda önerilir).
+
+8. Geliştirme Yol Haritası (Fazlar)
+Faz 1: Next.js kurulumu, Supabase bağlantısı ve Veritabanı tablosunun oluşturulması.
+
+Faz 2: Stripe entegrasyonu ve Ödeme Sayfası (Checkout) tasarımı.
+
+Faz 3: Webhook kurulumu (Ödemenin veritabanına işlenmesi).
+
+Faz 4: Admin Paneli geliştirilmesi.
+
+Faz 5: Test ve Canlıya Alım (Deployment).
