@@ -1,5 +1,5 @@
 import React from 'react';
-import { supabaseAdmin } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import {
     Search,
     Filter,
@@ -9,37 +9,72 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
+import TransactionSearch from '@/components/admin/TransactionSearch';
+import TransactionStatusFilter from '@/components/admin/TransactionStatusFilter';
 
-async function getTransactions() {
-    const { data, error } = await supabaseAdmin
+async function getTransactions(filters: { merchant_id?: string; q?: string; status?: string }) {
+    let query = supabaseAdmin
         .from('transactions')
-        .select('*')
+        .select('*, merchants(name)')
         .order('created_at', { ascending: false });
 
-    if (error) return [];
+    if (filters.merchant_id) {
+        query = query.eq('merchant_id', filters.merchant_id);
+    }
+
+    if (filters.status) {
+        query = query.eq('status', filters.status);
+    }
+
+    if (filters.q) {
+        // First, search for merchants matching the name to get their IDs
+        const { data: matchedMerchants } = await supabaseAdmin
+            .from('merchants')
+            .select('id')
+            .ilike('name', `%${filters.q}%`);
+
+        const merchantIds = matchedMerchants?.map(m => m.id) || [];
+
+        // Construct OR query parts
+        let orParts = [
+            `stripe_pi_id.ilike.%${filters.q}%`,
+            `source_ref_id.ilike.%${filters.q}%`,
+            `customer_name.ilike.%${filters.q}%`
+        ];
+
+        if (merchantIds.length > 0) {
+            orParts.push(`merchant_id.in.(${merchantIds.join(',')})`);
+        }
+
+        query = query.or(orParts.join(','));
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+        console.error('Fetch error:', error);
+        return [];
+    }
     return data;
 }
 
-export default async function TransactionsPage() {
-    const transactions = await getTransactions();
+export default async function TransactionsPage(props: {
+    searchParams: Promise<{ merchant_id?: string; q?: string; status?: string }>;
+}) {
+    const searchParams = await props.searchParams;
+    const transactions = await getTransactions({
+        merchant_id: searchParams.merchant_id,
+        q: searchParams.q,
+        status: searchParams.status
+    });
 
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
             {/* Search and Filters Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-8 rounded-[32px] border border-gray-100 shadow-sm">
                 <div className="flex items-center gap-4 flex-1">
-                    <div className="relative flex-1 max-w-md">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                        <input
-                            type="text"
-                            placeholder="İşlem ID veya referans ile ara..."
-                            className="w-full pl-12 pr-6 py-3 bg-gray-50 border-none rounded-2xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none placeholder:text-gray-300"
-                        />
-                    </div>
-                    <button className="flex items-center gap-2 px-6 py-3 bg-white border border-gray-100 rounded-2xl text-sm font-bold text-gray-600 hover:bg-gray-50 transition">
-                        <Filter size={18} />
-                        Filtreler
-                    </button>
+                    <TransactionSearch />
+                    <TransactionStatusFilter />
                 </div>
 
                 <button className="flex items-center justify-center gap-2 px-6 py-3 bg-gray-900 text-white rounded-2xl text-sm font-bold hover:bg-gray-800 transition shadow-lg shadow-gray-200">
@@ -54,6 +89,7 @@ export default async function TransactionsPage() {
                     <table className="w-full text-left">
                         <thead>
                             <tr className="bg-gray-50/30 text-gray-400 text-[10px] font-black uppercase tracking-[0.2em] border-b border-gray-50">
+                                <th className="px-10 py-6">Firma</th>
                                 <th className="px-10 py-6">İşlem ID</th>
                                 <th className="px-10 py-6">Referans / Kaynak</th>
                                 <th className="px-10 py-6">Tarih & Saat</th>
@@ -63,8 +99,15 @@ export default async function TransactionsPage() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                            {transactions.map((t) => (
+                            {transactions.map((t: any) => (
                                 <tr key={t.id} className="group hover:bg-gray-50/50 transition-colors">
+                                    <td className="px-10 py-8">
+                                        <div className="flex flex-col">
+                                            <span className="text-xs font-black text-blue-600 uppercase tracking-wider">
+                                                {t.merchants?.name || 'Doğrudan'}
+                                            </span>
+                                        </div>
+                                    </td>
                                     <td className="px-10 py-8">
                                         <span className="text-sm font-black text-gray-900 uppercase">#{t.stripe_pi_id?.slice(-12).toUpperCase() || 'MOCK'}</span>
                                     </td>

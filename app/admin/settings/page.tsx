@@ -39,11 +39,11 @@ export default function SettingsPage() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                             <div className="space-y-3">
                                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-2">Mağaza Adı</label>
-                                <input type="text" defaultValue="froyd Store" className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none" />
+                                <input type="text" defaultValue="P2CGateway" className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none" />
                             </div>
                             <div className="space-y-3">
                                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-2">Destek E-postası</label>
-                                <input type="email" defaultValue="support@froyd.io" className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none" />
+                                <input type="email" defaultValue="support@ayris.dev" className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none" />
                             </div>
                             <div className="space-y-3">
                                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-2">Para Birimi</label>

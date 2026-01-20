@@ -8,12 +8,15 @@ import {
     MoreHorizontal,
     ArrowUpRight
 } from 'lucide-react';
-import { supabaseAdmin } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
-async function getCustomers() {
+import CustomerSearch from '@/components/admin/CustomerSearch';
+
+async function getFilteredCustomers(queryText?: string) {
     const { data: transactions, error } = await supabaseAdmin
         .from('transactions')
-        .select('*');
+        .select('*')
+        .order('created_at', { ascending: false });
 
     if (error || !transactions) return null;
 
@@ -21,7 +24,10 @@ async function getCustomers() {
     const customerMap = new Map();
 
     transactions.forEach(t => {
-        const key = t.customer_name || t.customer_phone || 'Unknown';
+        // We use a combination of name and phone as a key if possible, 
+        // fallback to whichever is available
+        const key = (t.customer_phone || t.customer_name || 'Unknown').toLowerCase().trim();
+
         if (!customerMap.has(key)) {
             customerMap.set(key, {
                 id: t.id,
@@ -29,27 +35,45 @@ async function getCustomers() {
                 phone: t.customer_phone || 'Telefon Yok',
                 spent: 0,
                 orders: 0,
+                lastOrder: t.created_at,
                 status: 'New'
             });
         }
+
         const c = customerMap.get(key);
         c.orders += 1;
         if (t.status === 'succeeded') {
             c.spent += Number(t.amount);
         }
+        // Update last order date if this transaction is newer
+        if (new Date(t.created_at) > new Date(c.lastOrder)) {
+            c.lastOrder = t.created_at;
+        }
     });
 
-    const customers = Array.from(customerMap.values()).map(c => {
-        if (c.orders > 5) c.status = 'High Value';
+    let customers = Array.from(customerMap.values()).map(c => {
+        if (c.orders > 5 && c.spent > 1000) c.status = 'High Value';
         else if (c.orders > 1) c.status = 'Active';
         return c;
     });
 
+    // Client-side search (since customers are derived)
+    if (queryText) {
+        const q = queryText.toLowerCase();
+        customers = customers.filter(c =>
+            c.name.toLowerCase().includes(q) ||
+            c.phone.toLowerCase().includes(q)
+        );
+    }
+
     return customers;
 }
 
-export default async function CustomersPage() {
-    const customers = await getCustomers();
+export default async function CustomersPage(props: {
+    searchParams: Promise<{ q?: string }>;
+}) {
+    const searchParams = await props.searchParams;
+    const customers = await getFilteredCustomers(searchParams.q);
 
     if (!customers) return <div className="p-10 font-black text-gray-400 uppercase tracking-widest animate-pulse">Müşteriler yükleniyor...</div>;
 
@@ -61,21 +85,21 @@ export default async function CustomersPage() {
                     <h1 className="text-3xl font-black text-gray-900 tracking-tight">Müşteriler</h1>
                     <p className="text-sm text-gray-400 font-bold uppercase tracking-widest mt-2">Müşteri portföyünüzü yönetin</p>
                 </div>
-                <button className="flex items-center justify-center gap-3 px-8 py-4 bg-[#2563EB] text-white rounded-2xl font-black shadow-xl shadow-blue-100 hover:bg-blue-700 transition active:scale-95 uppercase text-xs tracking-widest">
-                    <Plus size={18} />
-                    Yeni Müşteri Ekle
-                </button>
+                <div className="p-3 bg-blue-50/50 rounded-2xl border border-blue-100/50 flex items-center gap-3">
+                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+                    <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Canlı Veritabanı Bağlantısı</span>
+                </div>
             </div>
 
             {/* Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <div className="bg-white p-10 rounded-[40px] border border-gray-100 shadow-sm flex items-center gap-8">
-                    <div className="w-16 h-16 bg-blue-50 rounded-[20px] flex items-center justify-center text-blue-600">
+                <div className="bg-white p-10 rounded-[40px] border border-gray-100 shadow-sm flex items-center gap-8 group hover:border-blue-500 transition-colors">
+                    <div className="w-16 h-16 bg-blue-50 rounded-[20px] flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
                         <Users size={32} />
                     </div>
                     <div>
                         <p className="text-3xl font-black text-gray-900">{customers.length.toLocaleString('tr-TR')}</p>
-                        <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mt-1">Toplam Müşteri</p>
+                        <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mt-1">Sorgulanan Müşteri</p>
                     </div>
                 </div>
                 <div className="bg-white p-10 rounded-[40px] border border-gray-100 shadow-sm flex items-center gap-8">
@@ -83,8 +107,8 @@ export default async function CustomersPage() {
                         <ArrowUpRight size={32} />
                     </div>
                     <div>
-                        <p className="text-3xl font-black text-gray-900">Gerçek</p>
-                        <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mt-1">Canlı Veri</p>
+                        <p className="text-3xl font-black text-gray-900">%{((customers.filter(c => c.status === 'High Value' || c.status === 'Active').length / (customers.length || 1)) * 100).toFixed(0)}</p>
+                        <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mt-1">Bağlılık Oranı</p>
                     </div>
                 </div>
                 <div className="bg-white p-10 rounded-[40px] border border-gray-100 shadow-sm flex items-center gap-8">
@@ -93,7 +117,7 @@ export default async function CustomersPage() {
                     </div>
                     <div>
                         <p className="text-3xl font-black text-gray-900">{customers.filter(c => c.phone !== 'Telefon Yok').length}</p>
-                        <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mt-1">Telefon Kayıtlı</p>
+                        <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mt-1">İletişim Bilgili</p>
                     </div>
                 </div>
             </div>
@@ -101,17 +125,10 @@ export default async function CustomersPage() {
             {/* List */}
             <div className="bg-white rounded-[40px] border border-gray-100 shadow-sm overflow-hidden">
                 <div className="p-8 border-b border-gray-50 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="relative flex-1 max-w-md">
-                        <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
-                        <input
-                            type="text"
-                            placeholder="İsim veya telefon ile ara..."
-                            className="w-full pl-16 pr-6 py-5 bg-gray-50 border-none rounded-2xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none placeholder:text-gray-300"
-                        />
+                    <CustomerSearch />
+                    <div className="bg-gray-50 px-6 py-4 rounded-2xl">
+                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Sıralama: En Son Ödeme</span>
                     </div>
-                    <button className="text-blue-600 text-xs font-black uppercase tracking-widest hover:underline decoration-2 underline-offset-4 px-6 py-4">
-                        Görünümü Filtrele
-                    </button>
                 </div>
 
                 <div className="overflow-x-auto text-sans tracking-tight">
@@ -122,7 +139,7 @@ export default async function CustomersPage() {
                                 <th className="px-10 py-8">Segment</th>
                                 <th className="px-10 py-8">Sipariş</th>
                                 <th className="px-10 py-8">Toplam Harcama</th>
-                                <th className="px-10 py-8 text-right">Aksiyonlar</th>
+                                <th className="px-10 py-8 text-right">Durum</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
@@ -130,7 +147,7 @@ export default async function CustomersPage() {
                                 <tr key={i} className="group hover:bg-gray-50/50 transition-colors">
                                     <td className="px-10 py-10">
                                         <div className="flex items-center gap-5">
-                                            <div className="w-14 h-14 bg-gray-100 rounded-2xl flex items-center justify-center text-gray-400 font-black text-sm uppercase tracking-tighter">
+                                            <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center font-black text-sm uppercase tracking-tighter group-hover:bg-blue-600 group-hover:text-white transition-colors">
                                                 {customer.name.slice(0, 2).toUpperCase()}
                                             </div>
                                             <div className="flex flex-col">
@@ -141,7 +158,7 @@ export default async function CustomersPage() {
                                     </td>
                                     <td className="px-10 py-10">
                                         <span className={`inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${customer.status === 'Active' ? 'bg-emerald-50 text-emerald-600' :
-                                            customer.status === 'High Value' ? 'bg-blue-50 text-blue-600' :
+                                            customer.status === 'High Value' ? 'bg-blue-600 text-white' :
                                                 customer.status === 'New' ? 'bg-indigo-50 text-indigo-600' :
                                                     'bg-gray-50 text-gray-400'
                                             }`}>
@@ -151,7 +168,7 @@ export default async function CustomersPage() {
                                         </span>
                                     </td>
                                     <td className="px-10 py-10">
-                                        <span className="text-sm font-black text-gray-900">{customer.orders}</span>
+                                        <span className="text-sm font-black text-gray-900">{customer.orders} İşlem</span>
                                     </td>
                                     <td className="px-10 py-10">
                                         <span className="text-sm font-black text-gray-900">
@@ -160,12 +177,12 @@ export default async function CustomersPage() {
                                     </td>
                                     <td className="px-10 py-10 text-right">
                                         <div className="flex items-center justify-end gap-3">
-                                            <button className="p-3 bg-gray-50 text-gray-400 rounded-xl hover:text-blue-600 hover:bg-blue-50 transition">
-                                                <Phone size={18} />
-                                            </button>
-                                            <button className="p-3 bg-gray-50 text-gray-400 rounded-xl hover:text-gray-900 hover:bg-gray-100 transition">
-                                                <MoreHorizontal size={18} />
-                                            </button>
+                                            <div className="flex flex-col items-end">
+                                                <span className="text-[10px] font-black text-gray-900 uppercase tracking-widest">Son İşlem</span>
+                                                <span className="text-[10px] text-gray-400 font-bold mt-1 uppercase">
+                                                    {new Date(customer.lastOrder).toLocaleDateString('tr-TR')}
+                                                </span>
+                                            </div>
                                         </div>
                                     </td>
                                 </tr>
@@ -173,6 +190,12 @@ export default async function CustomersPage() {
                         </tbody>
                     </table>
                 </div>
+                {customers.length === 0 && (
+                    <div className="p-20 text-center">
+                        <Users className="w-12 h-12 text-gray-200 mx-auto mb-4" />
+                        <p className="text-sm font-black text-gray-400 uppercase tracking-widest">Müşteri bulunamadı</p>
+                    </div>
+                )}
             </div>
         </div>
     );

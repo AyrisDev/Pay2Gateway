@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
-import { supabaseAdmin } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
@@ -35,13 +35,45 @@ export async function POST(req: NextRequest) {
 }
 
 async function handlePaymentSucceeded(paymentIntent: any) {
-    const { error } = await supabaseAdmin
+    // 1. Update status in our DB
+    const { data: transaction, error: updateError } = await supabaseAdmin
         .from('transactions')
         .update({ status: 'succeeded' })
-        .eq('stripe_pi_id', paymentIntent.id);
+        .eq('stripe_pi_id', paymentIntent.id)
+        .select('*')
+        .single();
 
-    if (error) {
-        console.error('Error updating transaction success:', error);
+    if (updateError) {
+        console.error('Error updating transaction success:', updateError);
+        return;
+    }
+
+    // 2. If callback_url exists, notify the merchant (firm)
+    if (transaction && transaction.callback_url) {
+        try {
+            console.log(`Sending callback to: ${transaction.callback_url}`);
+
+            const response = await fetch(transaction.callback_url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    status: 'success',
+                    amount: transaction.amount,
+                    currency: transaction.currency,
+                    ref_id: transaction.source_ref_id,
+                    transaction_id: transaction.id,
+                    stripe_id: transaction.stripe_pi_id,
+                    customer_name: transaction.customer_name,
+                    timestamp: new Date().toISOString()
+                }),
+            });
+
+            if (!response.ok) {
+                console.warn(`Callback failed with status: ${response.status}`);
+            }
+        } catch (err) {
+            console.error('Error sending callback:', err);
+        }
     }
 }
 

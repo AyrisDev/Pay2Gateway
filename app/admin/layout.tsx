@@ -14,7 +14,9 @@ import {
     Bell,
     MessageSquare,
     ChevronDown,
-    Wallet
+    Wallet,
+    Building2,
+    Code2
 } from 'lucide-react';
 import Image from 'next/image';
 import { createClient } from '@/utils/supabase/client'; // Assuming a client-side Supabase client utility
@@ -36,9 +38,11 @@ export default function AdminLayout({
 
     const navItems = [
         { label: 'Genel Bakış', icon: LayoutDashboard, href: '/admin' },
+        { label: 'Firmalar', icon: Building2, href: '/admin/merchants' },
         { label: 'İşlemler', icon: CreditCard, href: '/admin/transactions' },
         { label: 'Müşteriler', icon: Users, href: '/admin/customers' },
         { label: 'Analizler', icon: BarChart3, href: '/admin/analytics' },
+        { label: 'Dokümantasyon', icon: Code2, href: '/admin/docs' },
         { label: 'Ayarlar', icon: Settings, href: '/admin/settings' },
     ];
 
@@ -51,8 +55,8 @@ export default function AdminLayout({
                         <Wallet size={24} />
                     </div>
                     <div>
-                        <h1 className="font-black text-gray-900 leading-tight">froyd Admin</h1>
-                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Yönetim Paneli</p>
+                        <h1 className="font-black text-gray-900 leading-tight text-lg">P2CGateway <span className="text-blue-600">Admin</span></h1>
+                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Merkezi Yönetim Paneli</p>
                     </div>
                 </div>
 

@@ -55,7 +55,7 @@ export default function LoginPage() {
                                 required
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
-                                placeholder="admin@froyd.io"
+                                placeholder="admin@p2cgateway.com"
                                 className="w-full pl-14 pr-6 py-4 bg-gray-50 border-none rounded-2xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none"
                             />
                         </div>
